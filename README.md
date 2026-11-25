@@ -111,3 +111,5 @@ Each row records cargo check --workspace --all-targets --locked --offline for x8
 | 2026-11-25T23:04:31 | [#184](https://github.com/Belobug/VIctory-Belobug-AMD/pull/184) | 01f7c0f4163f | 0 |
 | 2026-11-25T23:52:13 | [#208](https://github.com/Belobug/VIctory-Belobug-AMD/pull/208) | 8fce290fe3bd | 0 |
 | 2026-11-26T00:29:14 | [#185](https://github.com/Belobug/VIctory-Belobug-AMD/pull/185) | 279f0f57c318 | 0 |
+
+The PR #185 check was prepared with Codex (GPT-6 Luna) and independently verified by KernelSmoker. This is a Windows GNU cross-compilation result only; no NVIDIA GPU execution or benchmark was performed.
