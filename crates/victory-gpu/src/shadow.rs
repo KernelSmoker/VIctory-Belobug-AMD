@@ -1304,10 +1304,13 @@ fn over_system_budget(len: u64) -> bool {
             .and_then(|v| v.trim().parse::<u64>().ok())
             .map_or(50, |p| p.min(100))
     });
+    if *PERCENT >= 100 {
+        return false;
+    }
     let Some([_, (used, budget)]) = crate::host::video_memory() else {
         return false;
     };
-    if budget == 0 || *PERCENT >= 100 {
+    if budget == 0 {
         return false;
     }
     let over = used.saturating_add(len) > budget / 100 * *PERCENT;
