@@ -1,0 +1,40 @@
+--- a/crates/victory-formats/src/xma.rs
++++ b/crates/victory-formats/src/xma.rs
+@@ -1128,6 +1128,37 @@
+     }
+ 
+     #[test]
++    #[ignore = "synthetic CPU release benchmark"]
++    fn compare_imdct_timings() {
++        use std::{hint::black_box, time::Instant};
++
++        for n in [128usize, 256, 512] {
++            let input: Vec<f32> = (0..n).map(|i| ((i * 7919) % 97) as f32 - 48.0).collect();
++            let mut out = vec![0.0; n];
++            let scale = 2.0 / n as f32 / 32768.0;
++            let mut timings = [Vec::new(), Vec::new()];
++            imdct_half(&input, &mut out, scale);
++            for round in 0..8 {
++                for step in 0..2 {
++                    let variant = (round + step) % 2;
++                    let f = [imdct_half_uncached, imdct_half][variant];
++                    let start = Instant::now();
++                    for _ in 0..2000 {
++                        f(black_box(&input), &mut out, scale);
++                        black_box(&out);
++                    }
++                    timings[variant].push(start.elapsed().as_nanos() / 2000);
++                }
++            }
++            for times in &mut timings {
++                times.sort_unstable();
++            }
++            let median = |times: &[u128]| (times[3] + times[4]) as f64 / 2.0;
++            println!("n={n} uncached={} cached={} ns", median(&timings[0]), median(&timings[1]));
++        }
++    }
++
++    #[test]
+     fn fast_imdct_matches_the_direct_sum() {
+         for n in [128usize, 256, 512] {
+             let input: Vec<f32> = (0..n).map(|i| ((i * 7919) % 97) as f32 - 48.0).collect();
