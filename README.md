@@ -51,3 +51,11 @@ Each row records cargo check --workspace --all-targets --locked --offline for x8
 | 2026-11-25T20:19:48 | [#79](https://github.com/Belobug/VIctory-Belobug-AMD/pull/79) | 7bcc7f9638e5 | 0 |
 | 2026-11-25T20:21:35 | [#172](https://github.com/Belobug/VIctory-Belobug-AMD/pull/172) | 7304965eff1f | 0 |
 | 2026-11-25T20:23:18 | [#78](https://github.com/Belobug/VIctory-Belobug-AMD/pull/78) | 3a1106794504 | 0 |
+| 2026-11-25T20:25:14 | [#76](https://github.com/Belobug/VIctory-Belobug-AMD/pull/76) | f46ae5a8eaea | 0 |
+| 2026-11-25T20:27:16 | [#75](https://github.com/Belobug/VIctory-Belobug-AMD/pull/75) | 575c1bee60fe | 0 |
+| 2026-11-25T20:29:05 | [#70](https://github.com/Belobug/VIctory-Belobug-AMD/pull/70) | 98ec4ec1805b | 0 |
+| 2026-11-25T20:31:06 | [#69](https://github.com/Belobug/VIctory-Belobug-AMD/pull/69) | 83cd1bcf764b | 0 |
+| 2026-11-25T20:32:54 | [#68](https://github.com/Belobug/VIctory-Belobug-AMD/pull/68) | 0e9b505b8e21 | 0 |
+| 2026-11-25T20:34:43 | [#65](https://github.com/Belobug/VIctory-Belobug-AMD/pull/65) | ec645b3af28f | 0 |
+| 2026-11-25T20:36:31 | [#180](https://github.com/Belobug/VIctory-Belobug-AMD/pull/180) | 4d291d4e1969 | 0 |
+| 2026-11-25T20:38:20 | [#63](https://github.com/Belobug/VIctory-Belobug-AMD/pull/63) | 5afade4bc268 | 0 |
