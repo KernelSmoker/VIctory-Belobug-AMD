@@ -88,3 +88,6 @@ Each row records cargo check --workspace --all-targets --locked --offline for x8
 | 2026-11-25T21:40:10 | [#195](https://github.com/Belobug/VIctory-Belobug-AMD/pull/195) | 759a7391a5a9 | 0 |
 | 2026-11-25T21:41:58 | [#186](https://github.com/Belobug/VIctory-Belobug-AMD/pull/186) | c172bab2dc6f | 0 |
 | 2026-11-25T21:43:47 | [#144](https://github.com/Belobug/VIctory-Belobug-AMD/pull/144) | 646733af8c9c | 0 |
+| 2026-11-25T22:12:06 | [#197](https://github.com/Belobug/VIctory-Belobug-AMD/pull/197) | 48821bf98e5d | 0 |
+| 2026-11-25T22:13:59 | [#198](https://github.com/Belobug/VIctory-Belobug-AMD/pull/198) | c289582ba6a2 | 0 |
+| 2026-11-25T22:16:00 | [#195](https://github.com/Belobug/VIctory-Belobug-AMD/pull/195) | 83cd45edd780 | 0 |
