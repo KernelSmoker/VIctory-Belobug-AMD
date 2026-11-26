@@ -1157,5 +1157,12 @@ mod tests {
         // SAFETY: our view.
         unsafe { UnmapViewOfFile(windows_sys::Win32::System::Memory::MEMORY_MAPPED_VIEW_ADDRESS { Value: view as *mut _ }) };
         title_memory_remapped(view, 2 * BLOCK);
+        // The temporary write pin belongs to this test's mapping. The VA may
+        // be reused by another parallel test before its two-second expiry.
+        let first = view / BLOCK;
+        let last = (view + 2 * BLOCK).div_ceil(BLOCK);
+        guards()
+            .pins
+            .retain(|&(start, end, _)| start < first || end > last);
     }
 }
