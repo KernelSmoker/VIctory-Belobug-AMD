@@ -189,21 +189,27 @@ fn wait(p: &Pending, frame: u64) {
             Err(now) => previous = now,
         }
     };
-    let started = Instant::now();
+    let frame_started = Instant::now();
     let (lock, done) = &DONE;
     let mut held = lock.lock().unwrap_or_else(|e| e.into_inner());
+    let pipeline_started = Instant::now();
     while p.made.get().is_none() {
-        let rest = left.saturating_sub(started.elapsed());
+        let rest = left.saturating_sub(frame_started.elapsed());
         if rest.is_zero() {
             break;
         }
-        held = done.wait_timeout(held, rest).unwrap_or_else(|e| e.into_inner()).0;
+        held = done
+            .wait_timeout(held, rest)
+            .unwrap_or_else(|e| e.into_inner())
+            .0;
     }
-    // Exclude time queued behind the condition-variable mutex and handling
-    // notifications; return the portion of the reservation not spent waiting.
-    let elapsed_us = started.elapsed().min(left).as_micros() as u64;
-    p.waited_us.fetch_sub(left.as_micros() as u64 - elapsed_us, Ordering::Relaxed);
-    waited.fetch_add(elapsed_us, Ordering::Relaxed);
+    // Frame time includes mutex contention; this pipeline's cumulative budget
+    // starts once the condition-variable lock is acquired.
+    let pipeline_us = pipeline_started.elapsed().min(left).as_micros() as u64;
+    p.waited_us
+        .fetch_sub(left.as_micros() as u64 - pipeline_us, Ordering::Relaxed);
+    let frame_us = frame_started.elapsed().min(left).as_micros() as u64;
+    waited.fetch_add(frame_us, Ordering::Relaxed);
 }
 
 /// What the workers take from: the ordinary pipelines, the screen passes.
