@@ -1121,16 +1121,10 @@ mod tests {
         assert!(emit_for(&wave64, Target::ANY).is_ok());
         assert!(emit_for(&wave64, RDNA).is_ok());
         assert!(emit_for(&wave64, NVIDIA).is_ok());
-        // Two per group: the halves cannot meet at a group barrier yet.
+        // Two per group: the console flow keeps each wave's exchange separate.
         let two = compute_of(&words, true, 128);
         assert!(emit_for(&two, RDNA).is_ok());
-        assert_eq!(
-            emit_for(&two, NVIDIA),
-            Err(crate::ShaderError::Unsupported {
-                offset: 0,
-                what: "console wave64 lanes on a host without 64-lane waves",
-            })
-        );
+        assert!(emit_for(&two, NVIDIA).is_ok());
         // The same code in waves of 32 runs on either.
         let wave32 = compute(&words, false);
         assert!(emit_for(&wave32, NVIDIA).is_ok());
