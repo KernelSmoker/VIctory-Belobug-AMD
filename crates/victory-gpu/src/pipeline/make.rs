@@ -237,7 +237,11 @@ fn worker(i: usize, screen: bool) {
                 // SAFETY: a plain call.
                 let id = unsafe { windows::Win32::System::Threading::GetCurrentThreadId() };
                 AT_WORK.lock().unwrap_or_else(|e| e.into_inner()).push((id, p.clone()));
-                p.make();
+                if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| p.make())).is_err() {
+                    tracing::error!("pipeline worker panicked while making a host pipeline");
+                    worker_lost(id);
+                    continue;
+                }
                 AT_WORK.lock().unwrap_or_else(|e| e.into_inner()).retain(|w| w.0 != id);
                 if WAITING.fetch_sub(1, Ordering::Relaxed) == 1 {
                     drained();
