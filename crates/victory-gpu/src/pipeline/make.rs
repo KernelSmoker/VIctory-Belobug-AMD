@@ -39,6 +39,8 @@ pub(crate) struct Pending {
     lost: AtomicBool,
     /// A pass over the screen (see [`GraphicsState::screen_pass`]).
     screen: bool,
+    /// Time reserved for waiting on this pipeline across all title frames.
+    waited_us: AtomicU64,
     /// What identifies it across runs (shader containers and state), and
     /// whether a draw has used it yet.
     key: String,
@@ -61,6 +63,7 @@ impl Pending {
         key.update(graphics.as_ref().map(|g| g.describe()).unwrap_or_default().as_bytes());
         Pending {
             screen: graphics.as_ref().is_some_and(|g| g.screen_pass()),
+            waited_us: AtomicU64::new(0),
             shaders,
             graphics,
             queued: AtomicBool::new(false),
@@ -167,7 +170,25 @@ fn wait(p: &Pending, frame: u64) {
     if FRAME[kind].swap(frame, Ordering::Relaxed) != frame {
         waited.store(0, Ordering::Relaxed);
     }
-    let left = budget.saturating_sub(Duration::from_micros(waited.load(Ordering::Relaxed)));
+    let frame_left = budget.saturating_sub(Duration::from_micros(waited.load(Ordering::Relaxed)));
+    let mut previous = p.waited_us.load(Ordering::Relaxed);
+    let left = loop {
+        let pipeline_left = budget.saturating_sub(Duration::from_micros(previous));
+        let left = frame_left.min(pipeline_left);
+        if left.is_zero() {
+            return;
+        }
+        let reserved = previous.saturating_add(left.as_micros() as u64);
+        match p.waited_us.compare_exchange_weak(
+            previous,
+            reserved,
+            Ordering::Relaxed,
+            Ordering::Relaxed,
+        ) {
+            Ok(_) => break left,
+            Err(now) => previous = now,
+        }
+    };
     let started = Instant::now();
     let (lock, done) = &DONE;
     let mut held = lock.lock().unwrap_or_else(|e| e.into_inner());
@@ -178,7 +199,11 @@ fn wait(p: &Pending, frame: u64) {
         }
         held = done.wait_timeout(held, rest).unwrap_or_else(|e| e.into_inner()).0;
     }
-    waited.fetch_add(started.elapsed().as_micros() as u64, Ordering::Relaxed);
+    // Exclude time queued behind the condition-variable mutex and handling
+    // notifications; return the portion of the reservation not spent waiting.
+    let elapsed_us = started.elapsed().min(left).as_micros() as u64;
+    p.waited_us.fetch_sub(left.as_micros() as u64 - elapsed_us, Ordering::Relaxed);
+    waited.fetch_add(elapsed_us, Ordering::Relaxed);
 }
 
 /// What the workers take from: the ordinary pipelines, the screen passes.
@@ -299,5 +324,24 @@ mod tests {
             std::thread::yield_now();
         }
         assert!(matches!(p.made.get(), Some(None)));
+    }
+
+    #[test]
+    fn a_pipeline_uses_at_most_one_wait_budget_across_frames() {
+        let p = Pending::new(Vec::new(), None);
+        p.waited_us.store(BUDGET.as_micros() as u64, Ordering::Relaxed);
+        wait(&p, 2);
+        assert_eq!(p.waited_us.load(Ordering::Relaxed), BUDGET.as_micros() as u64);
+    }
+
+    #[test]
+    fn a_pipeline_wait_is_capped_by_the_remaining_pipeline_budget() {
+        let p = Pending::new(Vec::new(), None);
+        p.waited_us.store(
+            BUDGET.saturating_sub(Duration::from_millis(1)).as_micros() as u64,
+            Ordering::Relaxed,
+        );
+        wait(&p, 3);
+        assert!(p.waited_us.load(Ordering::Relaxed) <= BUDGET.as_micros() as u64);
     }
 }
