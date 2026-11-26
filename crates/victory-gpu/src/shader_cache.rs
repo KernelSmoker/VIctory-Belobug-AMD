@@ -10,8 +10,8 @@
 //! are ignored anyway).
 
 use std::path::PathBuf;
-use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::OnceLock;
 
 use victory_pipeline::{Cache, Converter};
 use victory_shader::emit::{HostShader, StaticSampler, Target, UserData};
@@ -51,7 +51,9 @@ fn build() -> &'static [u8; 32] {
         if let Some(other) = &other {
             tracing::warn!(of = %other.display(), "shader cache entries of another build are used");
         }
-        let exe = other.map_or_else(std::env::current_exe, Ok).and_then(std::fs::read);
+        let exe = other
+            .map_or_else(std::env::current_exe, Ok)
+            .and_then(std::fs::read);
         let limit = victory_shader::emit::loop_limit();
         if limit != victory_shader::emit::DEFAULT_LOOP_LIMIT {
             tracing::warn!(
@@ -128,13 +130,16 @@ impl<F: Fn(&[u8]) -> Result<HostShader, String> + Send + Sync> Converter for Tra
         "shader.dxil"
     }
     fn version(&self) -> u32 {
-        // The build fingerprint in the input does the versioning.
-        1
+        // The build fingerprint versions shader output; this version also
+        // separates the result envelope from the older success-only entries.
+        2
     }
     fn convert(&self, input: &[u8]) -> anyhow::Result<Vec<u8>> {
         self.ran.store(true, Ordering::Relaxed);
-        let shader = (self.translate)(&input[32..]).map_err(anyhow::Error::msg)?;
-        Ok(encode(&shader))
+        // Translation refusals depend only on the keyed input and build, so
+        // cache them too. Cache I/O failures still escape through anyhow and
+        // are never recorded as translation results.
+        Ok(encode_result((self.translate)(&input[32..])))
     }
 }
 
@@ -153,7 +158,7 @@ fn cached(
         let path = cache
             .get_or_convert(&converter, &input)
             .map_err(|e| format!("{e:#}"))?;
-        if let Some(shader) = std::fs::read(&path).ok().and_then(|b| decode(&b)) {
+        if let Some(result) = std::fs::read(&path).ok().and_then(|b| decode_result(&b)) {
             let (counter, what) = if converter.ran.load(Ordering::Relaxed) {
                 (&MISSES, "translated and cached")
             } else {
@@ -161,7 +166,7 @@ fn cached(
             };
             counter.fetch_add(1, Ordering::Relaxed);
             tracing::debug!(path = %path.display(), "shader {what}");
-            return Ok(shader);
+            return result;
         }
         tracing::debug!(path = %path.display(), "unreadable shader cache entry; translating again");
         let _ = std::fs::remove_file(&path);
@@ -171,6 +176,7 @@ fn cached(
 }
 
 const MAGIC: &[u8; 4] = b"VSH2";
+const RESULT_MAGIC: &[u8; 4] = b"VSR1";
 const STAGES: [HwStage; 8] = [
     HwStage::Ls,
     HwStage::Hs,
@@ -251,6 +257,40 @@ fn encode(s: &HostShader) -> Vec<u8> {
     }
     word(&mut out, u32::from(s.stride_table));
     out
+}
+
+/// Encodes either a translation or its deterministic refusal. Errors from
+/// opening, publishing, or reading the cache are handled outside this value.
+fn encode_result(result: Result<HostShader, String>) -> Vec<u8> {
+    let mut out = RESULT_MAGIC.to_vec();
+    match result {
+        Ok(shader) => {
+            out.push(0);
+            out.extend(encode(&shader));
+        }
+        Err(error) => {
+            out.push(1);
+            out.extend((error.len() as u32).to_le_bytes());
+            out.extend(error.as_bytes());
+        }
+    }
+    out
+}
+
+fn decode_result(bytes: &[u8]) -> Option<Result<HostShader, String>> {
+    if bytes.get(..4)? != RESULT_MAGIC {
+        return None;
+    }
+    match *bytes.get(4)? {
+        0 => decode(bytes.get(5..)?).map(Ok),
+        1 => {
+            let length = u32::from_le_bytes(bytes.get(5..9)?.try_into().ok()?) as usize;
+            let end = 9usize.checked_add(length)?;
+            let message = std::str::from_utf8(bytes.get(9..end)?).ok()?;
+            (end == bytes.len()).then(|| Err(message.to_owned()))
+        }
+        _ => None,
+    }
 }
 
 fn decode(bytes: &[u8]) -> Option<HostShader> {
@@ -377,9 +417,43 @@ mod tests {
         assert_eq!(cached(&cache, &build, container, translate), Ok(shader()));
         assert_eq!(runs.load(Ordering::Relaxed), 3);
 
-        // Failures are not stored.
+        // Deterministic translation refusals are stored and returned without
+        // calling the translator again.
         let fail = |_: &[u8]| Err::<HostShader, _>("unsupported".to_owned());
         assert!(cached(&cache, &build, b"other", fail).is_err());
+        let fail_runs = AtomicU64::new(0);
+        let fail = |_: &[u8]| {
+            fail_runs.fetch_add(1, Ordering::Relaxed);
+            Err::<HostShader, _>("unsupported".to_owned())
+        };
+        assert_eq!(
+            cached(&cache, &build, b"refused", fail),
+            Err("unsupported".into())
+        );
+        assert_eq!(
+            cached(&cache, &build, b"refused", fail),
+            Err("unsupported".into())
+        );
+        assert_eq!(fail_runs.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    fn result_envelopes_round_trip_and_reject_damage() {
+        let success = encode_result(Ok(shader()));
+        assert_eq!(decode_result(&success), Some(Ok(shader())));
+        let refusal = encode_result(Err("unsupported: malformed DXIL".into()));
+        assert_eq!(
+            decode_result(&refusal),
+            Some(Err("unsupported: malformed DXIL".into()))
+        );
+        for damaged in [
+            refusal[..4].to_vec(),
+            [RESULT_MAGIC.as_slice(), &[1], &[20, 0, 0, 0], b"short"].concat(),
+            [RESULT_MAGIC.as_slice(), &[9]].concat(),
+            [refusal.as_slice(), &[0]].concat(),
+        ] {
+            assert_eq!(decode_result(&damaged), None);
+        }
     }
 
     #[test]
